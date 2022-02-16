@@ -198,19 +198,20 @@ contract Baal is Executor, Initializable, CloneFactory {
     }
 
     // EVENTS
-    event SummonComplete(
+    event SetupComplete(
         bool lootPaused,
         bool sharesPaused,
-        uint256 gracePeriod,
-        uint256 votingPeriod,
+        uint32 gracePeriod,
+        uint32 votingPeriod,
         uint256 proposalOffering,
+        uint256 quorumPercent,
+        uint256 sponsorThreshold,
+        uint256 minRetentionPercent,
         string name,
         string symbol,
         address[] guildTokens,
-        address[] shamans,
-        address[] summoners,
-        uint256[] loot,
-        uint256[] shares
+        uint256 totalShares,
+        uint256 totalLoot
     ); /*emits after Baal summoning*/
     event SubmitProposal(
         uint256 indexed proposal,
@@ -218,6 +219,8 @@ contract Baal is Executor, Initializable, CloneFactory {
         uint256 votingPeriod,
         bytes proposalData,
         uint256 expiration,
+        bool selfSponsor,
+        uint256 timestamp,
         string details
     ); /*emits after proposal is submitted*/
     event SponsorProposal(
@@ -225,19 +228,25 @@ contract Baal is Executor, Initializable, CloneFactory {
         uint256 indexed proposal,
         uint256 indexed votingStarts
     ); /*emits after member has sponsored proposal*/
+    event CancelProposal(uint256 indexed proposal); /*emits when proposal is cancelled*/
     event SubmitVote(
         address indexed member,
         uint256 balance,
         uint256 indexed proposal,
         bool indexed approved
     ); /*emits after vote is submitted on proposal*/
-    event ProcessProposal(uint256 indexed proposal); /*emits when proposal is processed & executed*/
+    event ProcessProposal(
+        uint256 indexed proposal,
+        bool passed,
+        bool actionFailed
+    ); /*emits when proposal is processed & executed*/
     event ProcessingFailed(uint256 indexed proposal); /*emits when proposal is processed & executed*/
     event Ragequit(
         address indexed member,
         address to,
         uint256 indexed lootToBurn,
-        uint256 indexed sharesToBurn
+        uint256 indexed sharesToBurn,
+        address[] tokens
     ); /*emits when users burn Baal `shares` and/or `loot` for given `to` account*/
     event Approval(
         address indexed owner,
@@ -260,6 +269,18 @@ contract Baal is Executor, Initializable, CloneFactory {
         uint256 previousBalance,
         uint256 newBalance
     ); /*emits when a delegate account's voting balance changes*/
+    event ShamanSet(address indexed shaman, uint256 permission); /*emits when a shaman permission changes*/
+    event GuildTokenSet(address indexed token, bool enabled); /*emits when a guild token changes*/
+    event GovernanceConfigSet(
+        uint32 voting,
+        uint32 grace,
+        uint256 newOffering,
+        uint256 quorum,
+        uint256 sponsor,
+        uint256 minRetention
+    ); /*emits when gov config changes*/
+    event SharesPaused(bool paused); /*emits when shares are paused or unpaused*/
+    event LootPaused(bool paused); /*emits when loot is paused or unpaused*/
 
     /// @notice Summon Baal with voting configuration & initial array of `members` accounts with `shares` & `loot` weights.
     /// @param _initializationParams Encoded setup information.
@@ -302,6 +323,22 @@ contract Baal is Executor, Initializable, CloneFactory {
         );
 
         require(totalSupply > 0, "shares != 0"); /*TODO there might be use cases where supply 0 is desired*/
+
+        emit SetupComplete(
+            lootPaused,
+            sharesPaused,
+            gracePeriod,
+            votingPeriod,
+            proposalOffering,
+            quorumPercent,
+            sponsorThreshold,
+            minRetentionPercent,
+            name,
+            symbol,
+            guildTokens,
+            totalSupply,
+            totalLoot()
+        );
 
         status = 1; /*initialize 'reentrancy guard' status*/
     }
@@ -364,6 +401,8 @@ contract Baal is Executor, Initializable, CloneFactory {
             votingPeriod,
             proposalData,
             expiration,
+            selfSponsor,
+            block.timestamp,
             details
         ); /*emit event reflecting proposal submission*/
 
@@ -526,11 +565,13 @@ contract Baal is Executor, Initializable, CloneFactory {
         if (prop.yesVotes > prop.noVotes && okToExecute) {
             prop.status[2] = true; /*flag that proposal passed - allows minion-like extensions*/
             bool success = processActionProposal(proposalData); /*execute 'action'*/
-            if (!success) prop.status[3] = true;
+            if (!success) {
+                prop.status[3] = true;
+                emit ProcessingFailed(id);
+            }
         }
 
-        emit ProcessProposal(id); /*emit event reflecting that given proposal processed*/
-        // TODO, maybe emit extra metadata in event?
+        emit ProcessProposal(id, prop.status[2], prop.status[3]); /*emit event reflecting that given proposal processed*/
     }
 
     /// @notice Internal function to process 'action'[0] proposal.
@@ -563,6 +604,7 @@ contract Baal is Executor, Initializable, CloneFactory {
             "!cancellable"
         );
         prop.status[0] = true;
+        emit CancelProposal(id);
     }
 
     // ****************
@@ -640,7 +682,7 @@ contract Baal is Executor, Initializable, CloneFactory {
             }
         }
 
-        emit Ragequit(msg.sender, to, lootToBurn, sharesToBurn); /*event reflects claims made against Baal*/
+        emit Ragequit(msg.sender, to, lootToBurn, sharesToBurn, tokens); /*event reflects claims made against Baal*/
     }
 
     /// @notice Delegate votes from user to `delegatee`.
@@ -805,6 +847,7 @@ contract Baal is Executor, Initializable, CloneFactory {
                     "governor lock"
                 );
             shamans[_shamans[i]] = permission;
+            emit ShamanSet(_shamans[i], permission);
         }
     }
 
@@ -835,6 +878,8 @@ contract Baal is Executor, Initializable, CloneFactory {
     {
         sharesPaused = pauseShares; /*set pause `shares`*/
         lootPaused = pauseLoot; /*set pause `loot`*/
+        emit SharesPaused(pauseShares);
+        emit LootPaused(pauseLoot);
     }
 
     /// @notice Baal-or-manager-only function to mint shares.
@@ -964,6 +1009,7 @@ contract Baal is Executor, Initializable, CloneFactory {
 
             guildTokens.push(token); /*push account to `guildTokens` array*/
             guildTokensEnabled[token] = true;
+            emit GuildTokenSet(token, true);
         }
     }
 
@@ -978,6 +1024,7 @@ contract Baal is Executor, Initializable, CloneFactory {
             guildTokensEnabled[token] = false; // disable the token
             guildTokens[_tokenIndexes[i]] = guildTokens[guildTokens.length - 1]; /*swap-to-delete index with last value*/
             guildTokens.pop(); /*pop account from `guildTokens` array*/
+            emit GuildTokenSet(token, false);
         }
     }
 
@@ -1004,6 +1051,14 @@ contract Baal is Executor, Initializable, CloneFactory {
         quorumPercent = quorum;
         sponsorThreshold = sponsor;
         minRetentionPercent = minRetention;
+        emit GovernanceConfigSet(
+            voting,
+            grace,
+            newOffering,
+            quorum,
+            sponsor,
+            minRetention
+        );
     }
 
     // **********************
