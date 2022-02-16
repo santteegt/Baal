@@ -17,9 +17,13 @@ import "./LootERC20.sol";
 
 interface ILoot {
     function setUp(string memory _name, string memory _symbol) external;
+
     function mint(address recipient, uint256 amount) external;
+
     function burn(address account, uint256 amount) external;
+
     function balanceOf(address account) external view returns (uint256);
+
     function totalSupply() external view returns (uint256);
 }
 
@@ -56,7 +60,7 @@ contract Baal is Executor, Initializable, CloneFactory {
     ILoot public lootToken; /*Sub ERC20 for loot mgmt*/
     mapping(address => mapping(address => uint256)) public allowance; /*maps approved pulls of `shares` with erc20 accounting*/
     mapping(address => uint256) public balanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
-    
+
     // ADMIN PARAMETERS
     bool public lootPaused; /*tracks transferability of `loot` economic weight - amendable through 'period'[2] proposal*/
     bool public sharesPaused; /*tracks transferability of erc20 `shares` - amendable through 'period'[2] proposal*/
@@ -64,7 +68,7 @@ contract Baal is Executor, Initializable, CloneFactory {
     // MANAGER PARAMS
     address[] guildTokens; /*array of default erc20 tokens to withdraw on ragequit */
     mapping(address => bool) public guildTokensEnabled; /*maps guild token addresses -> enabled status (prevents duplicates in guildTokens[]) */
-    
+
     // GOVERNANCE PARAMS
     uint32 public votingPeriod; /* voting period in seconds - amendable through 'period'[2] proposal*/
     uint32 public gracePeriod; /*time delay after proposal voting period for processing*/
@@ -92,7 +96,7 @@ contract Baal is Executor, Initializable, CloneFactory {
     // PROPOSAL TRACKING
     mapping(address => mapping(uint32 => bool)) public memberVoted; /*maps members to their proposal votes (true = voted) */
     mapping(uint256 => Proposal) public proposals; /*maps `proposal id` to struct details*/
-        
+
     // DELEGATE TRACKING
     mapping(address => mapping(uint256 => Checkpoint)) public checkpoints; /*maps record of vote `checkpoints` for each account by index*/
     mapping(address => uint256) public numCheckpoints; /*maps number of `checkpoints` for each account*/
@@ -105,11 +109,19 @@ contract Baal is Executor, Initializable, CloneFactory {
 
     // SIGNATURE HELPERS
     mapping(address => uint256) public nonces; /*maps record of states for signing & validating signatures*/
-    bytes32 constant DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-    bytes32 constant DELEGATION_TYPEHASH = keccak256("Delegation(address delegatee,uint nonce,uint expiry)");
-    bytes32 constant PERMIT_TYPEHASH = keccak256("Permit(address owner,address spender,uint value,uint nonce,uint deadline)");
-    bytes32 constant VOTE_TYPEHASH = keccak256("Vote(uint proposalId,bool support)"); 
-    
+    bytes32 constant DOMAIN_TYPEHASH =
+        keccak256(
+            "EIP712Domain(string name,uint256 chainId,address verifyingContract)"
+        );
+    bytes32 constant DELEGATION_TYPEHASH =
+        keccak256("Delegation(address delegatee,uint nonce,uint expiry)");
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256(
+            "Permit(address owner,address spender,uint value,uint nonce,uint deadline)"
+        );
+    bytes32 constant VOTE_TYPEHASH =
+        keccak256("Vote(uint proposalId,bool support)");
+
     // DATA STRUCTURES
     struct Proposal {
         /*Baal proposal details*/
@@ -137,14 +149,14 @@ contract Baal is Executor, Initializable, CloneFactory {
     /* Unborn -> Submitted -> Voting -> Grace -> Ready -> Processed 
                               \-> Cancelled  \-> Defeated   */
     enum ProposalState {
-        Unborn,    /* 0 - can submit */
+        Unborn, /* 0 - can submit */
         Submitted, /* 1 - can sponsor -> voting */
-        Voting,    /* 2 - can be cancelled, otherwise proceeds to grace */
+        Voting, /* 2 - can be cancelled, otherwise proceeds to grace */
         Cancelled, /* 3 - terminal state, counts as processed */
-        Grace,     /* 4 - proceeds to ready/defeated */
-        Ready,     /* 5 - can be processed */
+        Grace, /* 4 - proceeds to ready/defeated */
+        Ready, /* 5 - can be processed */
         Processed, /* 6 - terminal state */
-        Defeated   /* 7 - terminal state, yes votes <= no votes, counts as processed */
+        Defeated /* 7 - terminal state, yes votes <= no votes, counts as processed */
     }
 
     // MODIFIERS
@@ -249,7 +261,6 @@ contract Baal is Executor, Initializable, CloneFactory {
         uint256 newBalance
     ); /*emits when a delegate account's voting balance changes*/
 
-
     /// @notice Summon Baal with voting configuration & initial array of `members` accounts with `shares` & `loot` weights.
     /// @param _initializationParams Encoded setup information.
     function setUp(bytes memory _initializationParams) public initializer {
@@ -270,7 +281,7 @@ contract Baal is Executor, Initializable, CloneFactory {
         lootToken.setUp(
             string(abi.encodePacked(_name, " LOOT")),
             string(abi.encodePacked(_symbol, "-LOOT"))
-        ); /*TODO this naming feels too opinionated*/
+        ); /*REVISIT this naming feels too opinionated*/
 
         multisendLibrary = _multisendLibrary; /*Set address of Gnosis multisend library to use for all execution*/
 
@@ -329,8 +340,10 @@ contract Baal is Executor, Initializable, CloneFactory {
                 selfSponsor ? latestSponsoredProposalId : 0, /* prevProposalId */
                 selfSponsor ? uint32(block.timestamp) : 0, /* votingStarts */
                 selfSponsor ? uint32(block.timestamp) + votingPeriod : 0, /* votingEnds */
-                selfSponsor ? uint32(block.timestamp) + votingPeriod + gracePeriod : 0, /* graceEnds */
-                expiration, 
+                selfSponsor
+                    ? uint32(block.timestamp) + votingPeriod + gracePeriod
+                    : 0, /* graceEnds */
+                expiration,
                 0, /* yes votes */
                 0, /* no votes */
                 0, /* highestMaxSharesAndLootAtYesVote */
@@ -364,7 +377,11 @@ contract Baal is Executor, Initializable, CloneFactory {
 
         require(getCurrentVotes(msg.sender) >= sponsorThreshold, "!sponsor"); /*check 'votes > threshold - required to sponsor proposal*/
         require(state(id) == ProposalState.Submitted, "!submitted");
-        require(prop.expiration == 0 || prop.expiration > block.timestamp + votingPeriod + gracePeriod, "expired");
+        require(
+            prop.expiration == 0 ||
+                prop.expiration > block.timestamp + votingPeriod + gracePeriod,
+            "expired"
+        );
 
         prop.votingStarts = uint32(block.timestamp);
 
@@ -422,7 +439,11 @@ contract Baal is Executor, Initializable, CloneFactory {
     /// @param voter Address of voter
     /// @param id Number of proposal in `proposals` mapping to cast vote on.
     /// @param approved If 'true', member will cast `yesVotes` onto proposal - if 'false', `noVotes` will be counted.
-    function _submitVote(address voter, uint32 id, bool approved) internal {
+    function _submitVote(
+        address voter,
+        uint32 id,
+        bool approved
+    ) internal {
         Proposal storage prop = proposals[id]; /*alias proposal storage pointers*/
         require(state(id) == ProposalState.Voting, "!voting");
 
@@ -435,8 +456,13 @@ contract Baal is Executor, Initializable, CloneFactory {
             if (approved) {
                 /*if `approved`, cast delegated balance `yesVotes` to proposal*/
                 prop.yesVotes += balance;
-                if (totalSupply + totalLoot() > prop.maxTotalSharesAndLootAtYesVote) {
-                    prop.maxTotalSharesAndLootAtYesVote = totalSupply + totalLoot();
+                if (
+                    totalSupply + totalLoot() >
+                    prop.maxTotalSharesAndLootAtYesVote
+                ) {
+                    prop.maxTotalSharesAndLootAtYesVote =
+                        totalSupply +
+                        totalLoot();
                 }
             } else {
                 /*otherwise, cast delegated balance `noVotes` to proposal*/
@@ -464,9 +490,9 @@ contract Baal is Executor, Initializable, CloneFactory {
         ProposalState prevProposalState = state(prop.prevProposalId);
         require(
             prevProposalState == ProposalState.Processed ||
-            prevProposalState == ProposalState.Cancelled ||
-            prevProposalState == ProposalState.Defeated ||
-            prevProposalState == ProposalState.Unborn,
+                prevProposalState == ProposalState.Cancelled ||
+                prevProposalState == ProposalState.Defeated ||
+                prevProposalState == ProposalState.Unborn,
             "prev!processed"
         );
 
@@ -484,7 +510,8 @@ contract Baal is Executor, Initializable, CloneFactory {
             okToExecute = false;
 
         // Make proposal fail if it didn't pass quorum
-        if (okToExecute && prop.yesVotes * 100 < quorumPercent * totalSupply) okToExecute = false;
+        if (okToExecute && prop.yesVotes * 100 < quorumPercent * totalSupply)
+            okToExecute = false;
 
         // Make proposal fail if the minRetentionPercent is exceeded
         if (
@@ -529,14 +556,15 @@ contract Baal is Executor, Initializable, CloneFactory {
         Proposal storage prop = proposals[id];
         require(state(id) == ProposalState.Voting, "!voting");
         require(
-            msg.sender == prop.sponsor || 
-            getPriorVotes(prop.sponsor, block.timestamp - 1) < sponsorThreshold || 
-            isGovernor(msg.sender), 
+            msg.sender == prop.sponsor ||
+                getPriorVotes(prop.sponsor, block.timestamp - 1) <
+                sponsorThreshold ||
+                isGovernor(msg.sender),
             "!cancellable"
         );
         prop.status[0] = true;
     }
-    
+
     // ****************
     // MEMBER FUNCTIONS
     // ****************
@@ -566,7 +594,7 @@ contract Baal is Executor, Initializable, CloneFactory {
     ) external nonReentrant {
         for (uint256 i; i < tokens.length; i++) {
             if (i > 0) {
-                require(tokens[i] > tokens[i - 1], '!order');
+                require(tokens[i] > tokens[i - 1], "!order");
             }
         }
 
@@ -653,7 +681,7 @@ contract Baal is Executor, Initializable, CloneFactory {
             require(nonce == nonces[signatory]++, "!nonce"); /*check given `nonce` is next in `nonces`*/
         }
 
-        require(deadline == 0 || deadline < block.timestamp, 'expired');
+        require(deadline == 0 || deadline < block.timestamp, "expired");
 
         _delegate(signatory, delegatee); /*execute delegation*/
     }
@@ -755,25 +783,25 @@ contract Baal is Executor, Initializable, CloneFactory {
             if (adminLock)
                 require(
                     permission != 1 &&
-                    permission != 3 &&
-                    permission != 5 &&
-                    permission != 7,
+                        permission != 3 &&
+                        permission != 5 &&
+                        permission != 7,
                     "admin lock"
                 );
             if (managerLock)
                 require(
                     permission != 2 &&
-                    permission != 3 &&
-                    permission != 6 &&
-                    permission != 7,
+                        permission != 3 &&
+                        permission != 6 &&
+                        permission != 7,
                     "manager lock"
                 );
             if (governorLock)
                 require(
                     permission != 4 &&
-                    permission != 5 &&
-                    permission != 6 &&
-                    permission != 7,
+                        permission != 5 &&
+                        permission != 6 &&
+                        permission != 7,
                     "governor lock"
                 );
             shamans[_shamans[i]] = permission;
@@ -799,8 +827,8 @@ contract Baal is Executor, Initializable, CloneFactory {
     // SHAMAN FUNCTIONS
     // ****************
     /// @notice Baal-or-admin-only function to set admin config (pause/unpause shares/loot)
-    /// @param pauseShares Turn share transfers on or off 
-    /// @param pauseLoot Turn loot transfers on or off 
+    /// @param pauseShares Turn share transfers on or off
+    /// @param pauseLoot Turn loot transfers on or off
     function setAdminConfig(bool pauseShares, bool pauseLoot)
         external
         baalOrAdminOnly
@@ -949,7 +977,7 @@ contract Baal is Executor, Initializable, CloneFactory {
             address token = guildTokens[_tokenIndexes[i]];
             guildTokensEnabled[token] = false; // disable the token
             guildTokens[_tokenIndexes[i]] = guildTokens[guildTokens.length - 1]; /*swap-to-delete index with last value*/
-            guildTokens.pop(); /*pop account from `guildTokens` array*/  
+            guildTokens.pop(); /*pop account from `guildTokens` array*/
         }
     }
 
@@ -986,7 +1014,10 @@ contract Baal is Executor, Initializable, CloneFactory {
     /// @param to Address to allow
     /// @param amount Amount to allow `to` to spend
     /// @return success Whether or not the approval succeeded.
-    function approve(address to, uint256 amount) external returns (bool success) {
+    function approve(address to, uint256 amount)
+        external
+        returns (bool success)
+    {
         allowance[msg.sender][to] = amount; /*adjust `allowance`*/
         emit Approval(msg.sender, to, amount); /*emit event reflecting approval*/
         success = true; /*confirm approval with ERC-20 accounting*/
@@ -1028,7 +1059,7 @@ contract Baal is Executor, Initializable, CloneFactory {
             bytes32 digest = keccak256(
                 abi.encodePacked("\x19\x01", domainSeparator, structHash)
             ); /*calculate EIP-712 digest for signature*/
-        address signatory = digest.recover(signature); /*recover signer from hash data*/
+            address signatory = digest.recover(signature); /*recover signer from hash data*/
             require(signatory != address(0), "!signatory"); /*check signer is not null*/
             require(signatory == owner, "!authorized"); /*check signer is `owner`*/
         }
@@ -1043,7 +1074,10 @@ contract Baal is Executor, Initializable, CloneFactory {
     /// @param to The address of destination account.
     /// @param amount The number of `shares` tokens to transfer.
     /// @return success Whether or not the transfer succeeded.
-    function transfer(address to, uint256 amount) external returns (bool success) {
+    function transfer(address to, uint256 amount)
+        external
+        returns (bool success)
+    {
         require(!sharesPaused, "!transferable");
         success = _transfer(msg.sender, to, amount);
     }
@@ -1053,7 +1087,11 @@ contract Baal is Executor, Initializable, CloneFactory {
     /// @param to The address of the destination account.
     /// @param amount The number of `shares` tokens to transfer.
     /// @return success Whether or not the transfer succeeded.
-    function transferFrom(address from, address to, uint256 amount) external returns (bool success) {
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external returns (bool success) {
         require(!sharesPaused, "!transferable");
         if (allowance[from][msg.sender] != type(uint256).max) {
             allowance[from][msg.sender] -= amount;
@@ -1067,7 +1105,11 @@ contract Baal is Executor, Initializable, CloneFactory {
     /// @param to The address of the destination account.
     /// @param amount The number of `shares` tokens to transfer.
     /// @return success Whether or not the transfer succeeded.
-    function _transfer(address from, address to, uint256 amount) private returns (bool success) {
+    function _transfer(
+        address from,
+        address to,
+        uint256 amount
+    ) private returns (bool success) {
         balanceOf[from] -= amount;
 
         /*If recipient is receiving their first shares, auto-self delegate*/
@@ -1091,25 +1133,40 @@ contract Baal is Executor, Initializable, CloneFactory {
     ***************/
     /// @notice State helper to determine proposal state
     /// @param id Number of proposal in proposals
-    /// @return Unborn -> Submitted -> Voting -> Grace -> Ready -> Processed 
+    /// @return Unborn -> Submitted -> Voting -> Grace -> Ready -> Processed
     ///         \-> Cancelled  \-> Defeated
     function state(uint32 id) public view returns (ProposalState) {
         Proposal memory prop = proposals[id];
-        if (prop.id == 0) { /*Uninitialized state*/
+        if (prop.id == 0) {
+            /*Uninitialized state*/
             return ProposalState.Unborn;
-        } else if (prop.status[0] /* cancelled */) {
+        } else if (
+            prop.status[0] /* cancelled */
+        ) {
             return ProposalState.Cancelled;
-        } else if (prop.votingStarts == 0 /*Voting has not started*/) { 
+        } else if (
+            prop.votingStarts == 0 /*Voting has not started*/
+        ) {
             return ProposalState.Submitted;
-        } else if (block.timestamp <= prop.votingEnds /*Voting in progress*/) { 
+        } else if (
+            block.timestamp <= prop.votingEnds /*Voting in progress*/
+        ) {
             return ProposalState.Voting;
-        } else if (block.timestamp <= prop.graceEnds /*Proposal in grace period*/) { 
+        } else if (
+            block.timestamp <= prop.graceEnds /*Proposal in grace period*/
+        ) {
             return ProposalState.Grace;
-        } else if (prop.noVotes >= prop.yesVotes /*Voting has concluded and failed to pass*/) { 
+        } else if (
+            prop.noVotes >= prop.yesVotes /*Voting has concluded and failed to pass*/
+        ) {
             return ProposalState.Defeated;
-        } else if (prop.status[1] /* processed */) {
+        } else if (
+            prop.status[1] /* processed */
+        ) {
             return ProposalState.Processed;
-        } else /* Proposal is ready to be processed*/ {
+        }
+        /* Proposal is ready to be processed*/
+        else {
             return ProposalState.Ready;
         }
     }
@@ -1159,7 +1216,8 @@ contract Baal is Executor, Initializable, CloneFactory {
             if (checkpoints[account][0].fromTimeStamp > timeStamp) return 0;
             uint256 lower = 0;
             uint256 upper = nCheckpoints - 1;
-            while (upper > lower) { /* Binary search to look for highest timestamp before desired timestamp*/
+            while (upper > lower) {
+                /* Binary search to look for highest timestamp before desired timestamp*/
                 uint256 center = upper - (upper - lower) / 2;
                 Checkpoint memory cp = checkpoints[account][center];
                 if (cp.fromTimeStamp == timeStamp) return cp.votes;
@@ -1216,7 +1274,7 @@ contract Baal is Executor, Initializable, CloneFactory {
     ***************/
     /// @notice Deposits ETH sent to Baal.
     receive() external payable {}
-    
+
     /// @notice Returns confirmation for 'safe' ERC-721 (NFT) transfers to Baal.
     function onERC721Received(
         address,
@@ -1292,25 +1350,172 @@ contract Baal is Executor, Initializable, CloneFactory {
 }
 
 contract BaalFactory is CloneFactory {
-    address payable immutable public template; // fixed template for minion using eip-1167 proxy pattern
-    
-    event SummonBaal(address indexed baal, address indexed loot);
-    
-    
-    constructor(address payable _template) {
-        template = _template;
+    address payable public immutable template; // fixed template for baal using eip-1167 proxy pattern
+    address public immutable lootSingleton; // fixed template for loot using eip-1167 proxy pattern
+    address public immutable multisend;
+
+    struct Preset {
+        bytes governanceConfig;
+        bytes adminConfig;
+        bytes guildTokenConfig;
     }
-    
-    function summonBaal(bytes memory initializationParams) external returns (address) {
+
+    mapping(uint256 => Preset) public presets;
+    uint256 public presetCounter;
+
+    event SummonBaal(address indexed baal, address indexed loot);
+
+    constructor(
+        address payable _template,
+        address _lootSingleton,
+        address _multisendLibrary
+    ) {
+        template = _template;
+        lootSingleton = _lootSingleton;
+        multisend = _multisendLibrary;
+    }
+
+    function summonBaalAdvanced(bytes memory _initializationParams)
+        public
+        returns (address)
+    {
         Baal baal = Baal(payable(createClone(template)));
-        
-        baal.setUp(initializationParams);
-        
+
+        baal.setUp(_initializationParams);
+
         address loot = address(baal.lootToken());
-        
+
         emit SummonBaal(address(baal), loot);
-        
-        return(address(baal));
-        
+
+        return (address(baal));
+    }
+
+    function encodeMultisend(bytes[] memory _calls, address[] memory _targets)
+        public
+        pure
+        returns (bytes memory encodedMultisend)
+    {
+        for (uint256 i = 0; i < _calls.length; i++) {
+            encodedMultisend = abi.encodePacked(
+                encodedMultisend,
+                uint8(0),
+                _targets[i],
+                uint256(0),
+                uint256(_calls[i].length),
+                bytes(_calls[i])
+            );
+        }
+    }
+
+    function encodeSetup(
+        address _baal,
+        uint256 _preset,
+        uint256[] calldata _summonerShares,
+        uint256[] calldata _summonerLoot,
+        address[] calldata _summoners,
+        address[] calldata _shamans,
+        uint256[] calldata _permissions
+    ) internal view returns (bytes memory encodedSetup) {
+        bytes memory _mintShares = abi.encodeWithSignature(
+            "mintShares(address[],uint256[])",
+            _summoners,
+            _summonerShares
+        );
+        bytes memory _mintLoot = abi.encodeWithSignature(
+            "mintLoot(address[],uint256[])",
+            _summoners,
+            _summonerLoot
+        );
+        bytes memory _setShamans = abi.encodeWithSignature(
+            "setShamans(address[],uint256[])",
+            _shamans,
+            _permissions
+        );
+        bytes[] memory _calls = new bytes[](4);
+        _calls[0] = presets[_preset].governanceConfig;
+        _calls[1] = presets[_preset].adminConfig;
+        _calls[2] = _mintShares;
+        _calls[3] = _mintLoot;
+        _calls[4] = presets[_preset].guildTokenConfig;
+        _calls[5] = _setShamans;
+        address[] memory _targets = new address[](4);
+        _targets[0] = _baal;
+        _targets[1] = _baal;
+        _targets[2] = _baal;
+        _targets[3] = _baal;
+        _targets[4] = _baal;
+        _targets[5] = _baal;
+        encodedSetup = encodeMultisend(_calls, _targets);
+    }
+
+    function summonBaal(
+        string memory _name,
+        string memory _symbol,
+        uint256 _preset,
+        uint256[] calldata _summonerShares,
+        uint256[] calldata _summonerLoot,
+        address[] calldata _summoners,
+        address[] calldata _shamans,
+        uint256[] calldata _permissions
+    ) external returns (address) {
+        Baal baal = Baal(payable(createClone(template)));
+
+        bytes memory _initializationMultisend = encodeSetup(
+            address(baal),
+            _preset,
+            _summonerShares,
+            _summonerLoot,
+            _summoners,
+            _shamans,
+            _permissions
+        );
+
+        // bytes memory _initializationParams = abi.encode(
+        //     _name,
+        //     _symbol,
+        //     lootSingleton,
+        //     multisend,
+        //     _initializationMultisend
+        // );
+        // baal.setUp(_initializationParams);
+
+        // emit SummonBaal(address(baal), address(baal.lootToken()));
+
+        return (address(baal));
+    }
+
+    function createPreset(
+        uint32 _minVoting,
+        uint32 _gracePeriod,
+        uint256 _proposalOffering,
+        uint256 _quorum,
+        uint256 _sponsorThreshold,
+        uint256 _retentionBound,
+        bool[] calldata _sharesLootPaused,
+        address[] calldata _guildTokens
+    ) external returns (uint256) {
+        bytes memory _governanceConfig = abi.encode(
+            _minVoting,
+            _gracePeriod,
+            _proposalOffering,
+            _quorum,
+            _sponsorThreshold,
+            _retentionBound
+        );
+        bytes memory _setGovernanceConfig = abi.encodeWithSignature(
+            "setGovernanceConfig(bytes)",
+            _governanceConfig
+        );
+        bytes memory _setAdminConfig = abi.encodeWithSignature(
+            "setAdminConfig(bool,bool)",
+            _sharesLootPaused[0],
+            _sharesLootPaused[1]
+        );
+        bytes memory _setGuildTokens = abi.encodeWithSignature(
+            "setGuildTokens(address[])",
+            _guildTokens
+        );
+        presets[++presetCounter] = Preset(_setGovernanceConfig, _setAdminConfig, _setGuildTokens);
+        return presetCounter;
     }
 }
