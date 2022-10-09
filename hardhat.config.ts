@@ -6,12 +6,14 @@ import "@nomiclabs/hardhat-etherscan";
 import "solidity-coverage";
 import "hardhat-contract-sizer";
 import "hardhat-abi-exporter";
+import "@semaphore-protocol/hardhat";
 
 import * as fs from "fs";
 import "@typechain/hardhat";
 import '@nomiclabs/hardhat-ethers'
 
 import "./tasks/setup";
+import "./tasks/deploy-semaphore-req";
 
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
@@ -124,6 +126,15 @@ const config: HardhatUserConfig = {
     compilers: [
       {
         version: "0.8.7",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 100,
+          },
+        },
+      },
+      {
+        version: "0.8.4",
         settings: {
           optimizer: {
             enabled: true,

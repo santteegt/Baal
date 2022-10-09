@@ -13,10 +13,13 @@ Made with ❤️ by Auryn.eth
 
 pragma solidity 0.8.7;
 
+import "hardhat/console.sol";
+
 contract Poster {
     event NewPost(address indexed user, string content, string indexed tag);
 
     function post(string calldata content, string calldata tag) external {
+        console.log("POSTER");
         emit NewPost(msg.sender, content, tag);
     }
 }
