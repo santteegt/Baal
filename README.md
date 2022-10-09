@@ -1,3 +1,15 @@
+# ETHBogota
+
+zkVoice - SemaphoreShaman
+
+## Changelog
+
+During this hackathon, the following files were implemented:
+
+- [SemaphoreShaman.sol](contracts/tools/SemaphoreShaman.sol)
+- [SemaphoreShaman.test.ts](test/SemaphoreShaman.test.ts)
+- [deploy-semaphore-req.ts](tasks/deploy-semaphore-req.ts)
+
 # Baal 👺
 
 Baal (Molochv3) is a minimal yet composable DAO template continuing work from the
