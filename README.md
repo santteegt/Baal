@@ -1,6 +1,6 @@
 # Baal 👺
 
-Baal (Molochv3) is a minimal yet composable DAO template continuing work from the
+Baal (MolochV3) is a minimal yet composable DAO template continuing work from the
 Moloch, Minion, Compound/OZ and Safe frameworks to make it easier for people to
 combine and command crypto assets with intuitive membership games.
 
